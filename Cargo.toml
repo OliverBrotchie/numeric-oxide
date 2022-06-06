@@ -1,0 +1,26 @@
+[package]
+name = "numeric-oxide"
+description = "A numeric precision library written in Rust and compiled to WebAssembly for use in Javascript."
+keywords = ["number precision","decimal","webassembly","rust"]
+license = "GPL-3"
+version = "0.1.0"
+authors = ["Oliver Brotchie <o.brotchie@gmail.com>"]
+repository = "https://github.com/OliverBrotchie/numeric-oxide"
+edition = "2018"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+wasm-bindgen = { version = "0.2.63", features = ["serde-serialize"] }
+serde = { version = "1.0.137", features = ["derive"] }
+rust_decimal = "1.24.0"
+
+# The `console_error_panic_hook` crate provides better debugging of panics by
+# logging them with `console.error`. This is great for development, but requires
+# all the `std::fmt` and `std::panicking` infrastructure, so isn't great for
+# code size when deploying.
+console_error_panic_hook = { version = "0.1.6" }
+
+[dev-dependencies]
+wasm-bindgen-test = "0.3.13"
