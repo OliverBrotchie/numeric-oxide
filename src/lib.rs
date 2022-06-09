@@ -30,28 +30,28 @@ impl From<rust_decimal::Error> for OxideErr {
 }
 
 #[wasm_bindgen]
-pub fn oxidate(input: String) -> Result<String, JsError> {
+pub fn oxidate(input: String, precision: Option<u32>) -> Result<String, JsError> {
     set_panic_hook();
 
-    match evaluate(input) {
+    match evaluate(input, precision) {
         Ok(v) => Ok(v),
         Err(e) => Err(e.into()),
     }
 }
 
 #[wasm_bindgen]
-pub fn oxidate_multiple(input: JsValue) -> Result<JsValue, JsError> {
+pub fn oxidate_multiple(input: JsValue, precision: Option<u32>) -> Result<JsValue, JsError> {
     set_panic_hook();
 
     let mut errors: Vec<OxideErr> = vec![];
     let results: Vec<String> = input
         .into_serde::<Vec<String>>()?
         .into_iter()
-        .map(evaluate)
+        .map(|v| evaluate(v, precision))
         .filter_map(|r| r.map_err(|e| errors.push(e)).ok())
         .collect();
 
-    if errors.len() > 0 {
+    if !errors.is_empty() {
         return Err(errors[0].clone().into());
     }
 
@@ -59,7 +59,7 @@ pub fn oxidate_multiple(input: JsValue) -> Result<JsValue, JsError> {
 }
 
 /// Evaluate a string of functions and decimal arguments
-fn evaluate(mut input: String) -> Result<String, OxideErr> {
+fn evaluate(mut input: String, precision: Option<u32>) -> Result<String, OxideErr> {
     input.retain(|c| !c.is_whitespace());
     let tokens = input
         .split(|c| c == '(' || c == ')' || c == ',')
@@ -74,6 +74,9 @@ fn evaluate(mut input: String) -> Result<String, OxideErr> {
             stack.push(val);
         } else {
             // If the token is a function, pop two values from the stack
+            if stack.len() < 2 {
+                return Err(OxideErr::UnmatchedToken(token.to_string()));
+            }
             match (stack.pop(), stack.pop()) {
                 (Some(left), Some(right)) => stack.push(match token {
                     "add" => left + right,
@@ -81,13 +84,19 @@ fn evaluate(mut input: String) -> Result<String, OxideErr> {
                     "mult" => left * right,
                     "div" => left / right,
                     "mod" => left % right,
+                    "pow" => Decimal::powd(&left, right),
                     _ => return Err(OxideErr::InvalidString),
                 }),
                 _ => return Err(OxideErr::UnmatchedToken(token.to_string())),
             }
         }
     }
-    Ok(stack[0].to_string())
+    Ok(if let Some(p) = precision {
+        stack[0].round_dp(p)
+    } else {
+        stack[0]
+    }
+    .to_string())
 }
 
 pub fn set_panic_hook() {
@@ -106,55 +115,67 @@ mod rust {
 
     #[test]
     fn simple_add() -> Result<(), OxideErr> {
-        assert_eq!(evaluate("add(1,2)".to_string())?, "3");
+        assert_eq!(evaluate("add(1,2)".to_string(), None)?, "3");
         Ok(())
     }
 
     #[test]
     fn add_with_white_space() -> Result<(), OxideErr> {
-        assert_eq!(evaluate("  add ( 1, 2 )  ".to_string())?, "3");
+        assert_eq!(evaluate("  add ( 1, 2 )  ".to_string(), None)?, "3");
         Ok(())
     }
 
     #[test]
     fn add_right() -> Result<(), OxideErr> {
-        assert_eq!(evaluate("add(1,add(1,2.2))".to_string())?, "4.2");
+        assert_eq!(evaluate("add(1,add(1,2.2))".to_string(), None)?, "4.2");
         Ok(())
     }
 
     #[test]
     fn add_left() -> Result<(), OxideErr> {
-        assert_eq!(evaluate("add(add(1,2.2),1)".to_string())?, "4.2");
+        assert_eq!(evaluate("add(add(1,2.2),1)".to_string(), None)?, "4.2");
         Ok(())
     }
 
     #[test]
     fn sub() -> Result<(), OxideErr> {
-        assert_eq!(evaluate("sub(2,2.5)".to_string())?, "-0.5");
+        assert_eq!(evaluate("sub(2,2.5)".to_string(), None)?, "-0.5");
         Ok(())
     }
 
     #[test]
     fn mult() -> Result<(), OxideErr> {
-        assert_eq!(evaluate("mult(2,2.5)".to_string())?, "5.0");
+        assert_eq!(evaluate("mult(2,2.5)".to_string(), None)?, "5.0");
         Ok(())
     }
 
     #[test]
     fn div() -> Result<(), OxideErr> {
-        assert_eq!(evaluate("div(10,2)".to_string())?, "5");
+        assert_eq!(evaluate("div(10,2)".to_string(), None)?, "5");
         Ok(())
     }
 
     #[test]
     fn modulo() -> Result<(), OxideErr> {
-        assert_eq!(evaluate("mod(10,2)".to_string())?, "0");
+        assert_eq!(evaluate("mod(10,2)".to_string(), None)?, "0");
         Ok(())
     }
 
     #[test]
     fn modulo_with_remainder() -> Result<(), OxideErr> {
-        assert_eq!(evaluate("mod(5,3)".to_string())?, "2");
+        assert_eq!(evaluate("mod(5,3)".to_string(), None)?, "2");
+        Ok(())
+    }
+
+    #[test]
+    fn power() -> Result<(), OxideErr> {
+        assert_eq!(evaluate("pow(5,2)".to_string(), None)?, "25");
+        Ok(())
+    }
+
+    #[test]
+    fn precision() -> Result<(), OxideErr> {
+        assert_eq!(evaluate("add(1,0.5)".to_string(), Some(0))?, "2");
         Ok(())
     }
 }

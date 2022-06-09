@@ -11,7 +11,7 @@ use wasm_bindgen_test::*;
 #[wasm_bindgen_test]
 fn oxidate_from_js() {
     assert_eq!(
-        match oxidate("div(2,mod(sub(mult(4,add(1,1))1),5))".to_string()) {
+        match oxidate("div(2,mod(sub(mult(4,add(1,1))1),5))".to_string(), None) {
             Ok(v) => v,
             Err(_) => panic!("Error"),
         },
@@ -23,6 +23,7 @@ fn oxidate_from_js() {
 fn oxidate_multiple_from_js() {
     match oxidate_multiple(
         JsValue::from_serde(&vec!["add(1,1)".to_string(), "add(2,2)".to_string()]).unwrap(),
+        None,
     ) {
         Ok(v) => {
             let results: Vec<String> = JsValue::into_serde(&v).unwrap();
